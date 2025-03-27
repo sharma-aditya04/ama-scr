@@ -8,9 +8,23 @@ import re
 import time
 import random
 import json
+from dotenv import load_dotenv
+import os
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# Configure CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": ["*"],  # Allow all origins
+        "methods": ["POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 def clean_price(price_text):
     if not price_text:
@@ -54,7 +68,7 @@ def get_amazon_cookies(session):
         headers = get_random_headers()
         
         # Add random delay before request
-        time.sleep(random.uniform(2, 4))
+        time.sleep(random.uniform(1, 2))  # Reduced delay for serverless
         
         response = session.get(homepage_url, headers=headers)
         response.raise_for_status()
@@ -81,14 +95,14 @@ def get_amazon_cookies(session):
         return None
 
 def scrape_amazon_product(url):
-    max_retries = 3
+    max_retries = 2  # Reduced retries for serverless
     retry_count = 0
     
     while retry_count < max_retries:
         try:
             # Add random delay between retries
             if retry_count > 0:
-                time.sleep(random.uniform(5, 10))
+                time.sleep(random.uniform(2, 4))  # Reduced delay for serverless
             
             session = requests.Session()
             
@@ -101,7 +115,7 @@ def scrape_amazon_product(url):
             session.cookies.update(cookies)
             
             # Add random delay before product request
-            time.sleep(random.uniform(3, 5))
+            time.sleep(random.uniform(1, 2))  # Reduced delay for serverless
             
             # Clean the URL by removing tracking parameters
             clean_url = url.split('/ref=')[0].split('?')[0]
@@ -333,24 +347,32 @@ def scrape_amazon_product(url):
             print(f"Unexpected error: {e}")
             return {"error": "An unexpected error occurred while scraping the product."}
 
-@app.route('/scrape', methods=['POST'])
+@app.route('/api/scrape', methods=['POST'])
 def scrape():
-    data = request.get_json()
-    if not data or 'url' not in data:
-        return jsonify({"error": "URL is required"}), 400
-    
-    url = data['url']
-    if not 'amazon.in' in url:
-        return jsonify({"error": "URL must be from amazon.in"}), 400
-    
-    product_info = scrape_amazon_product(url)
-    if not product_info:
-        return jsonify({"error": "Failed to scrape the product"}), 500
-    
-    if "error" in product_info:
-        return jsonify(product_info), 400
-    
-    return jsonify(product_info)
+    try:
+        data = request.get_json()
+        if not data or 'url' not in data:
+            return jsonify({"error": "URL is required"}), 400
+        
+        url = data['url']
+        if not 'amazon.in' in url:
+            return jsonify({"error": "URL must be from amazon.in"}), 400
+        
+        product_info = scrape_amazon_product(url)
+        if not product_info:
+            return jsonify({"error": "Failed to scrape the product"}), 500
+        
+        if "error" in product_info:
+            return jsonify(product_info), 400
+        
+        return jsonify(product_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
+# For local development
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
